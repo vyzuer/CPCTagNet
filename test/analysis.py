@@ -58,7 +58,7 @@ def load_globals():
 
 def plot_hist(prec1, prec2, rec1, rec2, ids, method):
 
-    n_tags = 20
+    n_tags = 50
     fname = dump_dir + 'top_tags_hist_' + str(method) + '.png'
 
     # baseline
@@ -70,7 +70,7 @@ def plot_hist(prec1, prec2, rec1, rec2, ids, method):
     tags = classes[ids][:n_tags]
     print tags
     
-    mpl.rcParams.update({'font.size': 22})
+    mpl.rcParams.update({'font.size': 10})
     plt.subplot(111, aspect=10)
     bar_width = 0.20
     index = np.arange(n_tags)
@@ -82,7 +82,7 @@ def plot_hist(prec1, prec2, rec1, rec2, ids, method):
     plt.ylabel('Scores')
     lgd = plt.legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3,
                ncol=4, mode="expand", borderaxespad=0.)
-    plt.xticks(index+2*bar_width, tags, rotation='vertical', fontsize=16)
+    plt.xticks(index+2*bar_width, tags, rotation='vertical', fontsize=8)
     plt.tight_layout()
     plt.savefig(fname, bbox_extra_artists=(lgd,), bbox_inches='tight')
     plt.close()
@@ -115,12 +115,17 @@ def master():
 
     num_tags = labels_f.size
 
-    prec1 = pr1[:,0][tag_ids]
-    rec1 = pr1[:,1][tag_ids]
-    prec2 = pr2[:,0][tag_ids]
-    rec2 = pr2[:,1][tag_ids]
+    # prec1 = pr1[:,0][tag_ids]
+    # rec1 = pr1[:,1][tag_ids]
+    # prec2 = pr2[:,0][tag_ids]
+    # rec2 = pr2[:,1][tag_ids]
 
-    classes = classes[tag_ids]
+    prec1 = pr1[:,0]
+    rec1 = pr1[:,1]
+    prec2 = pr2[:,0]
+    rec2 = pr2[:,1]
+
+    # classes = classes[tag_ids]
 
     f1_1 = np.asarray([2*p1*r1/(p1 + r1) if p1 >0 or r1 > 0 else 0 for p1,r1 in zip(prec1, rec1)])
     f1_2 = np.asarray([2*p1*r1/(p1 + r1) if p1 >0 or r1 > 0 else 0 for p1,r1 in zip(prec2, rec2)])
@@ -139,12 +144,11 @@ def master():
     sorted_ids4 = p_gain.argsort()[::-1]
     sorted_ids5 = r_gain.argsort()[::-1]
 
-    if viz:
-        plot_hist(prec1, prec2, rec1, rec2, sorted_ids1, 0)
-        plot_hist(prec1, prec2, rec1, rec2, sorted_ids2, 1)
-        # plot_hist(prec1, prec2, rec1, rec2, sorted_ids3, 2)
-        # plot_hist(prec1, prec2, rec1, rec2, sorted_ids4, 3)
-        # plot_hist(prec1, prec2, rec1, rec2, sorted_ids5, 4)
+    plot_hist(prec1, prec2, rec1, rec2, sorted_ids1, 0)
+    plot_hist(prec1, prec2, rec1, rec2, sorted_ids2, 1)
+    # plot_hist(prec1, prec2, rec1, rec2, sorted_ids3, 2)
+    # plot_hist(prec1, prec2, rec1, rec2, sorted_ids4, 3)
+    # plot_hist(prec1, prec2, rec1, rec2, sorted_ids5, 4)
 
     for ids in (sorted_ids3, sorted_ids4, sorted_ids5):
         tags = classes[ids][:50]

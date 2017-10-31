@@ -18,7 +18,7 @@ import os.path as osp
 
 from copy import copy
 
-caffe_root = '/home/vyzuer/work/caffe/'
+caffe_root = '/home/yogesh/work/caffe/'
 sys.path.append(caffe_root + 'python')
 import caffe # If you get "No module named _caffe", either you have not built pycaffe or you have the wrong path.
 
@@ -29,11 +29,11 @@ sys.path.append("pycaffe") # the tools file is in this folder
 
 import tools #this contains some tools that we need
 
-sys.path.append('/home/vyzuer/work/code/ftags/')
+sys.path.append('/home/yogesh/work/code/ftags/')
 
 batch_size = 100
-n_samples = 154800
-# n_samples = 10000
+n_samples = 67900
+# n_samples = 1000
 clasess = None
 photo_ids = None
 dump_dir = None
@@ -48,7 +48,10 @@ n_tags = None
 
 import common.globals as gv
 
-def _init(context):
+models = {0:'tagnet', 1:'contagnet', 2:'uctagnet', 3:'cuctagnet'}
+prediction_layers = {0:'fc8_tag', 1:'fc9_flickr_con', 2:'fc10_flickr_con', 3:'fc10_flickr_con'}
+
+def _init():
 
     global classes
     global photo_ids
@@ -58,17 +61,13 @@ def _init(context):
     caffe.set_mode_gpu()
     caffe.set_device(0)
 
-    # photo_ids = np.loadtxt('/home/vyzuer/work/data/DataSets/ftags/test/test.list', dtype=str)
-    photo_ids = np.loadtxt('/home/vyzuer/work/data/DataSets/ftags/train/28/train_28.list_new', dtype=str)
+    # photo_ids = np.loadtxt('/home/yogesh/work/data/DataSets/ftags/test/test.list', dtype=str)
+    photo_ids = np.loadtxt('/home/yogesh/work/data/DataSets/ftags/train_28.list_new', dtype=str)
 
     dump_dir = gv.__dump_dir
 
-    if context:
-        n_tags = gv.__NUM_TAGS_1540
-        classes = np.loadtxt('/home/vyzuer/work/data/DataSets/ftags/tags_1540_list.txt', dtype=str)
-    else:
-        n_tags = gv.__NUM_TAGS
-        classes = np.loadtxt('/home/vyzuer/work/data/DataSets/ftags/tags_list.txt', dtype=str)
+    n_tags = gv.__NUM_TAGS_1540
+    classes = np.loadtxt('/home/yogesh/work/data/DataSets/ftags/tags_1540_list.txt', dtype=str)
 
 def evaluate_k(gt, est, k=5):
     """
@@ -151,11 +150,7 @@ def check_accuracy_nonc(net, k=5):
 
 def check_accuracy(net, k=5, context=1):
     global num_asamples
-    pred_layer = None
-    if context:
-        pred_layer = 'fc9_flickr_con'
-    else:
-        pred_layer = 'fc8_flickr'
+    pred_layer = prediction_layers[context]
 
     fname = dump_dir + 'prediction_val_' + str(k) + '_' + str(context) + '.tsv'
     fp = open(fname, 'w')
@@ -271,13 +266,14 @@ def master(model_dir, context, viz = False):
     ap_ptag = np.zeros(n_tags)
     total_ptag = np.zeros(n_tags)
 
-    model_def = model_dir + 'validate.prototxt'    
+    model_def = model_dir + models[context] + '/validate.prototxt'    
     model_weights = None
-    # model_weights = caffe_root + 'models/finetune_flickr_tag/finetune_flickr_tag_1_iter_120000.caffemodel'
-    if context:
-        model_weights = caffe_root + 'models/alexnet_flickr_tag/alexnet_flickr_tag_3_iter_180000.caffemodel'
-    else:
-        model_weights = caffe_root + 'models/finetune_flickr_tag/finetune_flickr_tag_1_iter_680000.caffemodel'
+    model_weights = caffe_root + 'models/' + models[context] + '/alexnet_' + models[context] + '_0_iter_1000000.caffemodel'
+    # if context:
+    #     # model_weights = caffe_root + 'models/contagnet/alexnet_contagnet_0_iter_200000.caffemodel'
+    #     model_weights = caffe_root + 'models/cuctagnet/alexnet_cuctagnet_0_iter_100000.caffemodel'
+    # else:
+    #     model_weights = caffe_root + 'models/finetune_flickr_tag/finetune_flickr_tag_1_iter_680000.caffemodel'
     # model_weights = caffe_root + 'models/finetune_flickr_tag/finetune_flickr_tag_3_iter_80000.caffemodel'
     # model_weights = caffe_root + 'models/bvlc_reference_caffenet/bvlc_reference_caffenet.caffemodel'
     net = caffe.Net(model_def,      # defines the structure of the model
@@ -289,10 +285,10 @@ def master(model_dir, context, viz = False):
 
     # predict_tags(net)
 
-    fname = dump_dir + 'results_' + str(context) + '.list'
+    fname = dump_dir + 'results_val_' + str(context) + '.list'
     fp = open(fname, 'w')
-    # for k in (1, 3, 5, 10):
-    for k in ([5]):
+    for k in (1, 3, 5, 10):
+    # for k in ([5]):
         res = check_accuracy(net, k, context)
 
         fp.write('k: %d\n' %(k))
@@ -317,7 +313,7 @@ if __name__ == "__main__":
     model_path = sys.argv[1]
     context = int(sys.argv[2])
 
-    _init(context)
+    _init()
 
     master(model_path, context=context, viz=False)
     # master_nonc(model_path, viz=False)

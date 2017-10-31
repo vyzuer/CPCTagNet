@@ -16,6 +16,7 @@ import socket
 batch_size = 10000
 tag_db = None
 yfcc2m = None
+user_tag_matrix = None
 num_tags = None
 num_dim = 6
 data_base = None
@@ -26,6 +27,7 @@ sys.path.append('/home/vyzuer/work/code/ftags/')
 
 import common.globals as gv
 
+num_clusters = gv.__NUM_CLUSTERS
 
 def _init():
     global tag_db
@@ -33,6 +35,7 @@ def _init():
     global num_tags
     global data_base
     global lmdb_base
+    global user_tag_matrix
 
     data_base = gv.__image_data
 
@@ -47,6 +50,7 @@ def _init():
 
     tag_db = client.flickr_tag
     yfcc2m = tag_db['yfcc2m']
+    user_tag_matrix = tag_db['usertag_matrix_train']
 
     data_dir = gv.__dataset_path
 
@@ -87,7 +91,7 @@ def get_labels(tags):
     return labels
 
 
-def fillLmdb(images_file, labels_file, context_file, userpref_file, maxPx, minPx):
+def fillLmdb(images_file, labels_file, context_file, userpref_file, prefid_file, maxPx, minPx):
     means = np.zeros(3)
     cnt = 0
 
@@ -111,11 +115,16 @@ def fillLmdb(images_file, labels_file, context_file, userpref_file, maxPx, minPx
         if os.path.exists(userpref_file):
             shutil.rmtree(userpref_file)
         os.makedirs(userpref_file)
+    if prefid_file is not None:
+        if os.path.exists(prefid_file):
+            shutil.rmtree(prefid_file)
+        os.makedirs(prefid_file)
 
     images_db = None
     labels_db = None
     context_db = None
     userpref_db = None
+    prefid_db = None
 
     if images_file is not None:
         images_db = lmdb.open(images_file, map_size=int(1e12))
@@ -125,11 +134,14 @@ def fillLmdb(images_file, labels_file, context_file, userpref_file, maxPx, minPx
         context_db = lmdb.open(context_file, map_size=int(1e12))
     if userpref_file is not None:
         userpref_db = lmdb.open(userpref_file, map_size=int(1e12))
+    if prefid_file is not None:
+        prefid_db = lmdb.open(prefid_file, map_size=int(1e12))
 
     images_txn = None
     labels_txn = None
     context_txn = None
     userpref_txn = None
+    prefid_txn = None
 
     if images_file is not None:
         images_txn = images_db.begin(write=True)
@@ -139,16 +151,27 @@ def fillLmdb(images_file, labels_file, context_file, userpref_file, maxPx, minPx
         context_txn = context_db.begin(write=True)
     if userpref_file is not None:
         userpref_txn = userpref_db.begin(write=True)
+    if prefid_file is not None:
+        prefid_txn = prefid_db.begin(write=True)
 
     # documents to be deleted
     remove_list = []
 
     cursor = yfcc2m.find(no_cursor_timeout=True).sort('_id', 1)
+
+    onehot = np.zeros(num_clusters, dtype=int)
     
     num_samples = yfcc2m.count()
     for in_idx, doc in enumerate(cursor):
 
         pid = doc['_id']
+        uid = doc['uid']
+        user = user_tag_matrix.find_one({'_id': uid})
+
+        if user is None:
+            print 'Error in locating user...'
+            exit(0)
+
         try:
             if images_file is not None:
                 #save image
@@ -188,10 +211,19 @@ def fillLmdb(images_file, labels_file, context_file, userpref_file, maxPx, minPx
                 context_txn.put('{:0>10d}'.format(cnt), context_dat.SerializeToString())
 
             if userpref_file is not None:
-                userpref = doc['userpref']
+                userpref = user['userpref']
                 userpref = np.array(userpref).astype(float).reshape(1,1,len(userpref))
                 userpref_dat = caffe.io.array_to_datum(userpref)
                 userpref_txn.put('{:0>10d}'.format(cnt), userpref_dat.SerializeToString())
+
+            if prefid_file is not None:
+                cid = user['cluster_id']
+                onehot[cid] = 1
+
+                prefid = np.array(onehot).astype(float).reshape(1,1,num_clusters)
+                prefid_dat = caffe.io.array_to_datum(prefid)
+                prefid_txn.put('{:0>10d}'.format(cnt), prefid_dat.SerializeToString())
+                onehot[cid] = 0
 
             cnt += 1
 
@@ -209,6 +241,10 @@ def fillLmdb(images_file, labels_file, context_file, userpref_file, maxPx, minPx
                 if userpref_file is not None:
                     userpref_txn.commit()
                     userpref_txn = userpref_db.begin(write=True)
+                if prefid_file is not None:
+                    prefid_txn.commit()
+                    prefid_txn = prefid_db.begin(write=True)
+
                 print 'saved batch: ', cnt
 
         except (KeyboardInterrupt, SystemExit):
@@ -232,6 +268,9 @@ def fillLmdb(images_file, labels_file, context_file, userpref_file, maxPx, minPx
             context_txn.commit()
         if userpref_file is not None:
             userpref_txn.commit()
+        if prefid_file is not None:
+            prefid_txn.commit()
+
         print 'saved last batch: ', in_idx
   
     if images_file is not None:
@@ -242,6 +281,8 @@ def fillLmdb(images_file, labels_file, context_file, userpref_file, maxPx, minPx
         context_db.close()
     if userpref_file is not None:
         userpref_db.close()
+    if prefid_file is not None:
+        prefid_db.close()
 
     print "\nFilling lmdb completed"
 
@@ -291,6 +332,13 @@ if __name__ == '__main__':
         required=False
     )
     parser.add_argument(
+        '--prefidOut',
+        type=str,
+        help='Pref id lmdb',
+        default=None,
+        required=False
+    )
+    parser.add_argument(
         '-n',
         type=int,
         help='Number of test examples',
@@ -321,6 +369,7 @@ if __name__ == '__main__':
         labels_file=args.labelsOut,
         context_file=args.contextOut,
         userpref_file=args.userprefOut,
+        prefid_file=args.prefidOut,
         minPx=args.minPx,
         maxPx=args.maxPx)
 
